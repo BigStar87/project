@@ -1,5 +1,190 @@
 <?php
 
+abstract class Storage
+{
+    abstract public function create(object $object): string;
+
+    abstract public function read(string $slug): ?object;
+
+    abstract public function update(string $slug, object $object): bool;
+
+    abstract public function delete(string $slug): bool;
+
+    abstract public function list(): array;
+}
+
+abstract class User
+{
+    protected int $id;
+    protected string $name;
+    protected string $role;
+
+    abstract public function getTextsToEdit(): array;
+}
+
+class FileStorage extends Storage
+{
+    private string $storagePath;
+
+    public function __construct(string $storagePath = 'storage')
+    {
+        $this->storagePath = rtrim($storagePath, '/') . '/';
+
+        if (!is_dir($this->storagePath)) {
+            mkdir($this->storagePath, 0777, true);
+        }
+    }
+
+    /**
+     * @param object $object
+     * @return string
+     */
+    public function create(object $object): string
+    {
+        $baseSlug = $object->slug;
+        $date = date('Y-m-d');
+        $counter = 0;
+
+        do {
+            $filename = $baseSlug . '_' . $date;
+            if ($counter > 0) {
+                $filename .= '_' . $counter;
+            }
+            $filename .= '.txt';
+            $filePath = $this->storagePath . $filename;
+
+            if (!file_exists($filePath)) {
+                break;
+            }
+            $counter++;
+        } while (true);
+
+        $object->slug = $filename;
+
+        $serialized = serialize($object);
+        if (file_put_contents($filePath, $serialized) === false) {
+            throw new RuntimeException("Failed to write file: $filePath");
+        }
+
+        return $object->slug;
+    }
+
+    /**
+     * @param string $slug
+     * @return TelegraphText|null
+     */
+    public function read(string $slug): ?TelegraphText
+    {
+        $filePath = $this->storagePath . $slug;
+
+        if (!file_exists($filePath)) {
+            $pattern = $this->storagePath . $slug . '*.txt';
+            $files = glob($pattern);
+
+            if (empty($files)) {
+                return null;
+            }
+            $filePath = $files[0];
+        }
+
+        $fileContent = file_get_contents($filePath);
+        if ($fileContent === false) {
+            return null;
+        }
+
+        $object = unserialize($fileContent);
+
+        if ($object instanceof TelegraphText) {
+            return $object;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param string $slug
+     * @param object $object
+     * @return bool
+     */
+    public function update(string $slug, object $object): bool
+    {
+        $filePath = $this->storagePath . $slug;
+
+        if (!file_exists($filePath)) {
+            // Попробуем найти файл
+            $pattern = $this->storagePath . $slug . '*.txt';
+            $files = glob($pattern);
+
+            if (empty($files)) {
+                return false;
+            }
+            $filePath = $files[0];
+        }
+
+        $object->slug = basename($filePath);
+
+        $serialized = serialize($object);
+        return file_put_contents($filePath, $serialized) !== false;
+    }
+
+    /**
+     * @param string $slug
+     * @return bool
+     */
+    public function delete(string $slug): bool
+    {
+        $filePath = $this->storagePath . $slug;
+
+        if (!file_exists($filePath)) {
+            // Попробуем найти файл
+            $pattern = $this->storagePath . $slug . '*.txt';
+            $files = glob($pattern);
+
+            if (empty($files)) {
+                return false;
+            }
+            $filePath = $files[0];
+        }
+
+        return unlink($filePath);
+    }
+
+    /**
+     * @return array
+     */
+    public function list(): array
+    {
+        $texts = [];
+
+        if (!is_dir($this->storagePath)) {
+            return $texts;
+        }
+
+        $files = scandir($this->storagePath);
+
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..' || pathinfo($file, PATHINFO_EXTENSION) !== 'txt') {
+                continue;
+            }
+
+            $filePath = $this->storagePath . $file;
+            $fileContent = file_get_contents($filePath);
+
+            if ($fileContent === false) {
+                continue;
+            }
+
+            $object = unserialize($fileContent);
+
+            if ($object instanceof TelegraphText) {
+                $texts[] = $object;
+            }
+        }
+
+        return $texts;
+    }
+}
+
 class TelegraphText
 {
     public string $title;
@@ -7,8 +192,6 @@ class TelegraphText
     public string $author;
     public string $published;
     public string $slug;
-
-    private const FILE_EXTENSION = '.txt';
 
     /**
      * @param string $title
@@ -20,57 +203,38 @@ class TelegraphText
         $this->title = $title;
         $this->text = $text;
         $this->author = $author;
-        $this->published = date('Y-m-d H:i:s');
-        $this->slug = strtolower(str_replace(' ', '-', $title));
+        $this->published = date('Y-m-d');
+        $this->slug = $this->generateSlug($title);
+    }
+
+    private function generateSlug(string $title): string
+    {
+        $slug = mb_strtolower(trim($title), 'UTF-8');
+        $slug = str_replace(' ', '-', $slug);
+
+        return $slug;
     }
 
     /**
-     * Функция создания файла в текстовом формате и добавления в него сериализованного массива
-     *
      * @return string
      */
     public function storeText(): string
     {
-        $data = [
-            'title' => $this->title,
-            'text' => $this->text,
-            'author' => $this->author,
-            'published' => $this->published
-        ];
-
-        $serializedData = serialize($data);
-
-        $fileName = $this->slug . self::FILE_EXTENSION;
-        file_put_contents($fileName, $serializedData);
-
-        return $this->slug;
+        $storage = new FileStorage();
+        return $storage->create($this);
     }
 
     /**
-     * Функция извлечения массива из файла и его десиарелизация
-     *
      * @param string $slug
      * @return TelegraphText|null
      */
     public static function loadText(string $slug): ?TelegraphText
     {
-        $fileName = $slug . self::FILE_EXTENSION;
-        if (!$fileName) {
-            return null;
-        }
-
-        $fileContent = file_get_contents($fileName);
-        $data = unserialize($fileContent);
-
-        $telegraphText = new TelegraphText($data['title'], $data['text'], $data['author']);
-        $telegraphText->published = $data['published'];
-
-        return $telegraphText;
+        $storage = new FileStorage();
+        return $storage->read($slug);
     }
 
     /**
-     * Функция изменения заголовка и текста
-     *
      * @param string $title
      * @param string $text
      * @return void
@@ -79,29 +243,28 @@ class TelegraphText
     {
         $this->title = $title;
         $this->text = $text;
+        $this->slug = $this->generateSlug($title);
     }
 }
 
-$title = "programing";
-$author = "Иван Петров";
-$text = "ООП в PHP.";
+$storage = new FileStorage();
 
-$telegraph = new TelegraphText($title, $text, $author);
+$text = new TelegraphText("Programing php", "Изучаем ООП в PHP", "Иван Петров");
+$slug = $storage->create($text);
 
-$slug = $telegraph->storeText();
+$loadedText = $storage->read($slug);
+if ($loadedText) {
+    echo "Заголовок: {$loadedText->title}\n";
+    echo "Текст: {$loadedText->text}\n";
+    echo "Автор: {$loadedText->author}\n";
+    echo "Дата: {$loadedText->published}\n\n";
+}
 
-$loadedTelegraph = TelegraphText::loadText($slug);
-echo $loadedTelegraph->title . PHP_EOL;
-echo $loadedTelegraph->text . PHP_EOL;
-echo $loadedTelegraph->author . PHP_EOL;
-echo $loadedTelegraph->published . PHP_EOL;
-echo '-------------------' . PHP_EOL;
+$text->editText("Programing php progress level", "Глубокое погружение в ООП");
+$storage->update($slug, $text);
 
-$telegraph->editText('news programing', 'Сегодня мы изучили ООП в PHP.');
-$slug = $telegraph->storeText();
-
-$loadedNewTelegraph = TelegraphText::loadText($slug);
-echo $loadedNewTelegraph->title . PHP_EOL;
-echo $loadedNewTelegraph->text . PHP_EOL;
-echo $loadedNewTelegraph->author . PHP_EOL;
-echo $loadedNewTelegraph->published . PHP_EOL;
+$allTexts = $storage->list();
+echo "Всего текстов в хранилище: " . count($allTexts) . "\n";
+foreach ($allTexts as $i => $text) {
+    echo "{$text->title} (автор: {$text->author})\n";
+}

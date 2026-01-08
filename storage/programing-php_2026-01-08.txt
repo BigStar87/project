@@ -1,0 +1,1 @@
+O:13:"TelegraphText":5:{s:5:"title";s:29:"Programing php progress level";s:4:"text";s:47:"Глубокое погружение в ООП";s:6:"author";s:21:"Иван Петров";s:9:"published";s:10:"2026-01-08";s:4:"slug";s:29:"programing-php_2026-01-08.txt";}
