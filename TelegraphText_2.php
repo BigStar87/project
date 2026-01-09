@@ -71,9 +71,9 @@ class FileStorage extends Storage
 
     /**
      * @param string $slug
-     * @return TelegraphText|null
+     * @return TelegraphTextTwo|null
      */
-    public function read(string $slug): ?TelegraphText
+    public function read(string $slug): ?TelegraphTextTwo
     {
         $filePath = $this->storagePath . $slug;
 
@@ -94,7 +94,7 @@ class FileStorage extends Storage
 
         $object = unserialize($fileContent);
 
-        if ($object instanceof TelegraphText) {
+        if ($object instanceof TelegraphTextTwo) {
             return $object;
         }
 
@@ -136,7 +136,6 @@ class FileStorage extends Storage
         $filePath = $this->storagePath . $slug;
 
         if (!file_exists($filePath)) {
-            // Попробуем найти файл
             $pattern = $this->storagePath . $slug . '*.txt';
             $files = glob($pattern);
 
@@ -176,7 +175,7 @@ class FileStorage extends Storage
 
             $object = unserialize($fileContent);
 
-            if ($object instanceof TelegraphText) {
+            if ($object instanceof TelegraphTextTwo) {
                 $texts[] = $object;
             }
         }
@@ -185,7 +184,7 @@ class FileStorage extends Storage
     }
 }
 
-class TelegraphText
+class TelegraphTextTwo
 {
     public string $title;
     public string $text;
@@ -226,9 +225,9 @@ class TelegraphText
 
     /**
      * @param string $slug
-     * @return TelegraphText|null
+     * @return TelegraphTextTwo|null
      */
-    public static function loadText(string $slug): ?TelegraphText
+    public static function loadText(string $slug): ?TelegraphTextTwo
     {
         $storage = new FileStorage();
         return $storage->read($slug);
@@ -249,7 +248,7 @@ class TelegraphText
 
 $storage = new FileStorage();
 
-$text = new TelegraphText("Programing php", "Изучаем ООП в PHP", "Иван Петров");
+$text = new TelegraphTextTwo("Programing php", "Изучаем ООП в PHP", "Иван Петров");
 $slug = $storage->create($text);
 
 $loadedText = $storage->read($slug);

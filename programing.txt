@@ -1,1 +1,1 @@
-a:4:{s:5:"title";s:15:"news programing";s:4:"text";s:49:"Сегодня мы изучили ООП в PHP.";s:6:"author";s:21:"Иван Петров";s:9:"published";s:19:"2026-01-08 14:41:35";}
+a:4:{s:5:"title";s:15:"news programing";s:4:"text";s:49:"Сегодня мы изучили ООП в PHP.";s:6:"author";s:21:"Иван Петров";s:9:"published";s:10:"2026-01-09";}
